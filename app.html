@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockSense AI — Direction Predictor</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080c10;
+    --surface: #0d1318;
+    --surface2: #121920;
+    --border: #1e2d38;
+    --text: #e2eaf0;
+    --muted: #4a6070;
+    --up: #00e5a0;
+    --up-dim: rgba(0,229,160,0.12);
+    --down: #ff4466;
+    --down-dim: rgba(255,68,102,0.12);
+    --accent: #00aaff;
+    --accent-dim: rgba(0,170,255,0.12);
+    --gold: #ffd060;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,170,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,170,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Glow orbs */
+  .orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .orb-1 { width: 600px; height: 600px; background: rgba(0,170,255,0.06); top: -200px; right: -100px; }
+  .orb-2 { width: 500px; height: 500px; background: rgba(0,229,160,0.05); bottom: -150px; left: -100px; }
+
+  /* Layout */
+  .shell {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 32px 0 40px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+  .logo {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .logo-name {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--accent), var(--up));
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .logo-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .status-dot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--up);
+    box-shadow: 0 0 8px var(--up);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.85); }
+  }
+
+  /* Ticker Input Section */
+  .input-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 32px;
+  }
+  .input-section h2 {
+    font-size: 13px;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+  }
+  .input-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .ticker-input {
+    flex: 1;
+    min-width: 200px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 16px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .ticker-input:focus { border-color: var(--accent); }
+  .ticker-input::placeholder { color: var(--muted); text-transform: none; letter-spacing: 0; }
+
+  .btn {
+    padding: 14px 28px;
+    border: none;
+    border-radius: 10px;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .btn-train {
+    background: var(--surface2);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+  .btn-train:hover { background: var(--accent-dim); }
+  .btn-predict {
+    background: linear-gradient(135deg, var(--accent), #0088cc);
+    color: #fff;
+  }
+  .btn-predict:hover { opacity: 0.85; transform: translateY(-1px); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+  /* Quick tickers */
+  .quick-tickers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .quick-chip {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    background: transparent;
+  }
+  .quick-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  /* Status bar */
+  .status-bar {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    padding: 10px 0;
+    min-height: 32px;
+    transition: color 0.3s;
+  }
+  .status-bar.loading { color: var(--accent); }
+  .status-bar.error { color: var(--down); }
+  .status-bar.success { color: var(--up); }
+
+  /* Result Card */
+  .result-section { display: none; }
+  .result-section.visible { display: block; }
+
+  .prediction-card {
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    padding: 36px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s ease;
+  }
+  .prediction-card.up {
+    background: linear-gradient(135deg, var(--up-dim) 0%, var(--surface) 60%);
+    border-color: rgba(0,229,160,0.3);
+  }
+  .prediction-card.down {
+    background: linear-gradient(135deg, var(--down-dim) 0%, var(--surface) 60%);
+    border-color: rgba(255,68,102,0.3);
+  }
+
+  .card-glow {
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 250px; height: 250px;
+    border-radius: 50%;
+    filter: blur(80px);
+    pointer-events: none;
+  }
+  .up .card-glow { background: rgba(0,229,160,0.2); }
+  .down .card-glow { background: rgba(255,68,102,0.2); }
+
+  .pred-ticker {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .pred-main {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 28px;
+  }
+  .pred-arrow {
+    font-size: 72px;
+    line-height: 1;
+    animation: slideIn 0.5s ease;
+  }
+  .up .pred-arrow { color: var(--up); }
+  .down .pred-arrow { color: var(--down); }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .pred-direction {
+    font-size: 52px;
+    font-weight: 800;
+    letter-spacing: -2px;
+    line-height: 1;
+  }
+  .up .pred-direction { color: var(--up); }
+  .down .pred-direction { color: var(--down); }
+
+  .pred-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 16px;
+  }
+  .pred-stat {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .pred-stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 8px;
+  }
+  .pred-stat-value {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  /* Probability Bar */
+  .prob-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 24px;
+  }
+  .prob-section h3 {
+    font-size: 13px;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+  }
+  .prob-bar-container {
+    position: relative;
+    height: 40px;
+    background: var(--surface2);
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .prob-bar-down {
+    position: absolute;
+    left: 0; top: 0; height: 100%;
+    background: linear-gradient(90deg, var(--down), #cc2244);
+    transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: flex;
+    align-items: center;
+    padding-left: 12px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.9);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .prob-bar-up {
+    position: absolute;
+    right: 0; top: 0; height: 100%;
+    background: linear-gradient(90deg, #009960, var(--up));
+    transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 12px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: rgba(0,0,0,0.8);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .prob-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* Metrics Grid */
+  .metrics-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 24px;
+    display: none;
+  }
+  .metrics-section.visible { display: block; }
+  .metrics-section h3 {
+    font-size: 13px;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+  }
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+  }
+  .metric-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .metric-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--up));
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.6s ease;
+  }
+  .metric-card.reveal::after { transform: scaleX(1); }
+  .metric-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 8px;
+  }
+  .metric-value {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .metric-sub {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* Disclaimer */
+  .disclaimer {
+    background: rgba(255,208,96,0.05);
+    border: 1px solid rgba(255,208,96,0.15);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--gold);
+    line-height: 1.7;
+    margin-top: 24px;
+  }
+
+  /* Spinner */
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div class="shell">
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-name">StockSense AI</div>
+      <div class="logo-tag">Direction Predictor · ML-Powered</div>
+    </div>
+    <div class="status-dot">
+      <div class="dot"></div>
+      <span id="model-status">Model Ready</span>
+    </div>
+  </header>
+
+  <!-- Input -->
+  <div class="input-section">
+    <h2>// Enter Ticker Symbol</h2>
+    <div class="input-row">
+      <input class="ticker-input" id="ticker" type="text" placeholder="e.g. AAPL, TSLA, NVDA" maxlength="10">
+      <button class="btn btn-train" id="btn-train" onclick="runTrain()">⚙ Train Model</button>
+      <button class="btn btn-predict" id="btn-predict" onclick="runPredict()">→ Predict Direction</button>
+    </div>
+    <div class="quick-tickers" id="quick-tickers"></div>
+    <div class="status-bar" id="status-bar">Ready. Enter a ticker and predict.</div>
+  </div>
+
+  <!-- Prediction Result -->
+  <div class="result-section" id="result-section">
+    <div class="prediction-card" id="prediction-card">
+      <div class="card-glow"></div>
+      <div class="pred-ticker" id="pred-ticker">—</div>
+      <div class="pred-main">
+        <div class="pred-arrow" id="pred-arrow">—</div>
+        <div class="pred-direction" id="pred-direction">—</div>
+      </div>
+      <div class="pred-grid">
+        <div class="pred-stat">
+          <div class="pred-stat-label">Last Price</div>
+          <div class="pred-stat-value" id="stat-price">—</div>
+        </div>
+        <div class="pred-stat">
+          <div class="pred-stat-label">Probability UP</div>
+          <div class="pred-stat-value" id="stat-prob-up">—</div>
+        </div>
+        <div class="pred-stat">
+          <div class="pred-stat-label">Confidence</div>
+          <div class="pred-stat-value" id="stat-conf">—</div>
+        </div>
+        <div class="pred-stat">
+          <div class="pred-stat-label">As of Date</div>
+          <div class="pred-stat-value" id="stat-date" style="font-size:14px">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Probability Bar -->
+    <div class="prob-section">
+      <h3>// Probability Distribution</h3>
+      <div class="prob-bar-container">
+        <div class="prob-bar-down" id="bar-down">▼ DOWN</div>
+        <div class="prob-bar-up" id="bar-up">UP ▲</div>
+      </div>
+      <div class="prob-labels">
+        <span id="label-down">DOWN 0%</span>
+        <span>50%</span>
+        <span id="label-up">UP 0%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Metrics Section (after train) -->
+  <div class="metrics-section" id="metrics-section">
+    <h3>// Model Performance Metrics</h3>
+    <div class="metrics-grid" id="metrics-grid"></div>
+  </div>
+
+  <!-- Disclaimer -->
+  <div class="disclaimer">
+    ⚠ DISCLAIMER: This tool is for educational and research purposes only.<br>
+    Predictions are based on historical patterns and do NOT constitute financial advice.<br>
+    Past performance does not guarantee future results. Always do your own research.
+  </div>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const API_BASE = 'http://localhost:5000/api';
+const QUICK_TICKERS = ['AAPL','MSFT','TSLA','NVDA','GOOGL','AMZN','META','NFLX'];
+
+// ── Quick ticker chips ───────────────────────────────────────────────────────
+const container = document.getElementById('quick-tickers');
+QUICK_TICKERS.forEach(t => {
+  const chip = document.createElement('button');
+  chip.className = 'quick-chip';
+  chip.textContent = t;
+  chip.onclick = () => { document.getElementById('ticker').value = t; };
+  container.appendChild(chip);
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function setStatus(msg, type = '') {
+  const el = document.getElementById('status-bar');
+  el.innerHTML = (type === 'loading' ? '<span class="spinner"></span>' : '') + msg;
+  el.className = 'status-bar ' + type;
+}
+
+function setButtons(disabled) {
+  document.getElementById('btn-train').disabled = disabled;
+  document.getElementById('btn-predict').disabled = disabled;
+}
+
+// ── Simulate mode (no real backend) ─────────────────────────────────────────
+function simulatePredict(ticker) {
+  const seed = ticker.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
+  const rng = (s) => ((Math.sin(s) * 43758.5453123) % 1 + 1) % 1;
+  const probUp = 0.42 + rng(seed * 7.3) * 0.26;
+  const prices = { AAPL:189.3, MSFT:415.2, TSLA:248.7, NVDA:890.5,
+                   GOOGL:162.4, AMZN:185.1, META:488.2, NFLX:628.3 };
+  const price = prices[ticker] || (100 + rng(seed) * 900);
+  return {
+    ticker, last_price: Math.round(price * 100) / 100,
+    probability_up: Math.round(probUp * 1000) / 1000,
+    confidence: Math.round(Math.max(probUp, 1 - probUp) * 1000) / 1000,
+    direction: probUp >= 0.5 ? 'UP' : 'DOWN',
+    date: new Date().toISOString().split('T')[0],
+  };
+}
+
+function simulateMetrics(ticker) {
+  const seed = ticker.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
+  const rng = (s) => ((Math.sin(s) * 43758.5453123) % 1 + 1) % 1;
+  return {
+    accuracy: 0.54 + rng(seed * 1.1) * 0.08,
+    precision: 0.52 + rng(seed * 2.3) * 0.10,
+    recall: 0.50 + rng(seed * 3.7) * 0.12,
+    f1: 0.51 + rng(seed * 4.2) * 0.09,
+    auc: 0.55 + rng(seed * 5.8) * 0.10,
+    cv_mean: 0.53 + rng(seed * 6.4) * 0.07,
+    cv_std: 0.01 + rng(seed * 7.9) * 0.03,
+  };
+}
+
+// ── Display prediction ───────────────────────────────────────────────────────
+function displayPrediction(p) {
+  const isUp = p.direction === 'UP';
+
+  document.getElementById('result-section').classList.add('visible');
+  const card = document.getElementById('prediction-card');
+  card.className = 'prediction-card ' + (isUp ? 'up' : 'down');
+
+  document.getElementById('pred-ticker').textContent = `// ${p.ticker}`;
+  document.getElementById('pred-arrow').textContent = isUp ? '▲' : '▼';
+  document.getElementById('pred-direction').textContent = p.direction;
+
+  document.getElementById('stat-price').textContent = `$${p.last_price}`;
+  document.getElementById('stat-prob-up').textContent = `${(p.probability_up * 100).toFixed(1)}%`;
+  document.getElementById('stat-conf').textContent = `${(p.confidence * 100).toFixed(1)}%`;
+  document.getElementById('stat-date').textContent = p.date;
+
+  // Probability bar
+  const pUp = p.probability_up * 100;
+  const pDown = 100 - pUp;
+  setTimeout(() => {
+    document.getElementById('bar-down').style.width = pDown + '%';
+    document.getElementById('bar-up').style.width = pUp + '%';
+    document.getElementById('bar-down').textContent = `▼ DOWN ${pDown.toFixed(1)}%`;
+    document.getElementById('bar-up').textContent = `UP ${pUp.toFixed(1)}% ▲`;
+    document.getElementById('label-down').textContent = `DOWN ${pDown.toFixed(1)}%`;
+    document.getElementById('label-up').textContent = `UP ${pUp.toFixed(1)}%`;
+  }, 100);
+}
+
+// ── Display metrics ──────────────────────────────────────────────────────────
+function displayMetrics(m) {
+  const section = document.getElementById('metrics-section');
+  section.classList.add('visible');
+  const grid = document.getElementById('metrics-grid');
+  const items = [
+    { label: 'Accuracy',  value: (m.accuracy * 100).toFixed(1) + '%' },
+    { label: 'Precision', value: (m.precision * 100).toFixed(1) + '%' },
+    { label: 'Recall',    value: (m.recall * 100).toFixed(1) + '%' },
+    { label: 'F1 Score',  value: (m.f1 * 100).toFixed(1) + '%' },
+    { label: 'ROC-AUC',   value: m.auc.toFixed(3) },
+    { label: 'CV Mean',   value: (m.cv_mean * 100).toFixed(1) + '%', sub: `±${(m.cv_std*100).toFixed(1)}%` },
+  ];
+  grid.innerHTML = items.map(i => `
+    <div class="metric-card">
+      <div class="metric-label">${i.label}</div>
+      <div class="metric-value">${i.value}</div>
+      ${i.sub ? `<div class="metric-sub">${i.sub}</div>` : ''}
+    </div>
+  `).join('');
+  setTimeout(() => grid.querySelectorAll('.metric-card').forEach(c => c.classList.add('reveal')), 100);
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+async function runTrain() {
+  const ticker = document.getElementById('ticker').value.trim().toUpperCase() || 'AAPL';
+  setButtons(true);
+  setStatus(`Training model on ${ticker}... (this may take 30–60 sec with real backend)`, 'loading');
+
+  try {
+    const res = await fetch(`${API_BASE}/train`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      displayMetrics(data.metrics);
+      setStatus(`✓ Model trained on ${ticker} — ${Object.keys(data.metrics).length} metrics computed`, 'success');
+    } else {
+      throw new Error(data.error);
+    }
+  } catch {
+    // Demo mode: simulate metrics
+    setStatus(`⚡ Demo mode — simulating training for ${ticker}`, 'loading');
+    await new Promise(r => setTimeout(r, 1800));
+    displayMetrics(simulateMetrics(ticker));
+    setStatus(`✓ Demo: Simulated model trained for ${ticker}`, 'success');
+  }
+  setButtons(false);
+}
+
+async function runPredict() {
+  const ticker = document.getElementById('ticker').value.trim().toUpperCase() || 'AAPL';
+  setButtons(true);
+  setStatus(`Fetching data and predicting direction for ${ticker}...`, 'loading');
+
+  try {
+    const res = await fetch(`${API_BASE}/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      displayPrediction(data.prediction);
+      setStatus(`✓ Prediction complete for ${ticker}`, 'success');
+    } else {
+      throw new Error(data.error);
+    }
+  } catch {
+    // Demo mode: simulate
+    setStatus(`⚡ Demo mode — simulating prediction for ${ticker}`, 'loading');
+    await new Promise(r => setTimeout(r, 1000));
+    displayPrediction(simulatePredict(ticker));
+    setStatus(`✓ Demo: Showing simulated prediction (connect backend for real ML)`, 'success');
+  }
+  setButtons(false);
+}
+
+// Enter key support
+document.getElementById('ticker').addEventListener('keydown', e => {
+  if (e.key === 'Enter') runPredict();
+});
+
+// Auto-load demo
+window.onload = () => {
+  document.getElementById('ticker').value = 'AAPL';
+  setTimeout(runPredict, 400);
+};
+</script>
+</body>
+</html>
