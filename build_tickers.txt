@@ -1,0 +1,55 @@
+import pandas as pd
+import requests
+
+# ---------- NSE TICKERS ----------
+
+def get_nse_tickers():
+    # Official NSE list of securities available for trading (equity segment)
+    # URL is from NSE archives and may change in future; update if it breaks.
+    nse_url = "https://nsearchives.nseindia.com/content/equities/sec_list.csv"
+    df = pd.read_csv(nse_url)
+    # Typical column names: 'SYMBOL', 'NAME OF COMPANY', etc.
+    tickers = df["SYMBOL"].dropna().astype(str).str.strip().unique().tolist()
+    # Convert to Yahoo-style with .NS if you are using yfinance
+    yf_tickers = [t + ".NS" for t in tickers]
+    return yf_tickers
+
+# ---------- BSE TICKERS ----------
+
+def get_bse_tickers():
+    # There isn't a single easy official CSV like NSE's that is always stable,
+    # so we use a helper source. You may replace this with any BSE CSV you prefer.
+    # Example: some sites provide a full BSE list as a table.
+    url = "https://stockanalysis.com/list/bse-india/"
+    tables = pd.read_html(url)
+    # Inspect first table as it usually contains the list
+    df = tables[0]
+    # Common column names: 'Symbol', 'Name', etc.
+    symbol_col = None
+    for c in df.columns:
+        if "symbol" in str(c).lower():
+            symbol_col = c
+            break
+    if symbol_col is None:
+        raise ValueError("Could not find symbol column in BSE table")
+    tickers = df[symbol_col].dropna().astype(str).str.strip().unique().tolist()
+    # Convert to Yahoo-style with .BO if using yfinance
+    yf_tickers = [t + ".BO" for t in tickers]
+    return yf_tickers
+
+# ---------- BUILD COMBINED LIST ----------
+
+def main():
+    nse = get_nse_tickers()
+    bse = get_bse_tickers()
+    all_tickers = sorted(set(nse + bse))
+    print(f"Total tickers (NSE+BS E): {len(all_tickers)}")
+
+    with open("tickers.txt", "w") as f:
+        for t in all_tickers:
+            f.write(t + "\n")
+
+    print("tickers.txt created with all NSE + BSE tickers (Yahoo format).")
+
+if _name_ == "_main_":
+    main()
